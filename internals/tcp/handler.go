@@ -11,6 +11,16 @@ import (
 func handleConnection(conn net.Conn, executor *command.Executor) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
+	id := conn.RemoteAddr().String()
+	subscribedKeys := make(map[string]struct{}) // Track keys for cleanup
+
+	defer func() {
+		// Unsubscribe from all keys on disconnect
+		for key := range subscribedKeys {
+			executor.Engine.PubSub().Unsubscribe(key, id)
+		}
+	}()
+
 
 	for {
 		conn.Write([]byte("> "))
@@ -56,6 +66,18 @@ func handleConnection(conn net.Conn, executor *command.Executor) {
 
 			continue // wait for more input or pub messages
 		}
+
+		// Handle UNSUBSCRIBE mode
+		if strings.HasPrefix(response, "__UNSUB__:") {
+			key := strings.TrimPrefix(response, "__UNSUB__:")
+
+			id := conn.RemoteAddr().String()
+			executor.Engine.PubSub().Unsubscribe(key, id)
+			delete(subscribedKeys, key)
+			conn.Write([]byte("UNSUBSCRIBED from " + key + "\n"))
+			continue
+		}
+
 
 		conn.Write([]byte(response + "\n"))
 

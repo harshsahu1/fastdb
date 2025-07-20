@@ -40,13 +40,18 @@ func (ex *Executor) ExecuteCommand(cmd *Command) (string, error) {
 		}
 		ex.Engine.Delete(cmd.Args[0])
 		return "OK", nil
-	case "WATCH":
+	case "SUB":
 		if len(cmd.Args) != 1 {
-			return "", errors.New("WATCH requires 1 argument: key")
+			return "", errors.New("SUB requires 1 argument: key")
 		}
 		// Signal TCP handler that this is a live subscription
 		return "__SUB__:" + cmd.Args[0], nil
+	case "UNSUB":
+		if len(cmd.Args) != 1 {
+			return "", errors.New("UNSUB requires at least 1 key")
+		}
 
+		return "__UNSUB__:" + cmd.Args[0], nil
 	default:
 		return "", errors.New("unknown command: " + cmd.Name)
 	}
