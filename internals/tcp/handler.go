@@ -39,6 +39,24 @@ func handleConnection(conn net.Conn, executor *command.Executor) {
 			conn.Write([]byte("ERR " + err.Error() + "\n"))
 			continue
 		}
+
+		// Handle SUBSCRIBE mode
+		if strings.HasPrefix(response, "__SUB__:") {
+			key := strings.TrimPrefix(response, "__SUB__:")
+
+			sub := executor.Engine.PubSub().Subscribe(key, conn.RemoteAddr().String())
+			conn.Write([]byte("SUBSCRIBED to " + key + "\n"))
+
+			// Listen to channel and write updates to TCP client
+			go func() {
+				for msg := range sub.Chan {
+					conn.Write([]byte("[" + key + "] " + string(msg) + "\n"))
+				}
+			}()
+
+			continue // wait for more input or pub messages
+		}
+
 		conn.Write([]byte(response + "\n"))
 
 	}
