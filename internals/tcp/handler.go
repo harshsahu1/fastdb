@@ -1,85 +1,92 @@
-// internals/tcp/handler.go
 package tcp
 
 import (
 	"bufio"
 	"fastdb/internals/command"
+	"fastdb/internals/engine"
+	"fastdb/internals/protocol"
+	"fmt"
 	"net"
-	"strings"
 )
 
 func handleConnection(conn net.Conn, executor *command.Executor) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	id := conn.RemoteAddr().String()
-	subscribedKeys := make(map[string]struct{}) // Track keys for cleanup
+	subscribedKeys := make(map[string]struct{})
 
-	defer func() {
-		// Unsubscribe from all keys on disconnect
-		for key := range subscribedKeys {
-			executor.Engine.PubSub().Unsubscribe(key, id)
+	writeChan := make(chan []byte, 128) // Buffered channel for all writes
+
+	// Only one goroutine writes to the connection
+	go func() {
+		for msg := range writeChan {
+			conn.Write(msg)
 		}
 	}()
 
+	defer func() {
+		for key := range subscribedKeys {
+			executor.Engine.PubSub().Unsubscribe(key, id)
+		}
+		close(writeChan)
+	}()
 
 	for {
-		conn.Write([]byte("> "))
-		line, err := reader.ReadString('\n')
+		args, err := protocol.ParseRESPCommand(reader)
 		if err != nil {
+			writeChan <- []byte("-ERR " + err.Error() + "\r\n")
 			return
 		}
 
-		line = strings.TrimSpace(line)
-		if line == "" {
+		if len(args) == 0 {
+			writeChan <- []byte("-ERR Empty command\r\n")
 			continue
 		}
 
-		if strings.EqualFold(line, "exit") || strings.EqualFold(line, "quit") {
-			conn.Write([]byte("👋 Bye!\n"))
-			return // Close the connection
-		}
-
-		args := strings.Split(line, " ")
-		cmd := strings.ToUpper(args[0])
-		response, err := executor.ExecuteCommand(&command.Command {
+		cmd := args[0]
+		response, err := executor.ExecuteCommand(&command.Command{
 			Name: cmd,
 			Args: args[1:],
 		})
 		if err != nil {
-			conn.Write([]byte("ERR " + err.Error() + "\n"))
+			writeChan <- []byte("-ERR " + err.Error() + "\r\n")
 			continue
 		}
 
-		// Handle SUBSCRIBE mode
-		if strings.HasPrefix(response, "__SUB__:") {
-			key := strings.TrimPrefix(response, "__SUB__:")
+		// Handle SUBSCRIBE
+		if len(response) > 14 && response[:14] == "__SUBSCRIBE__:" {
+			key := response[14:]
+			sub := executor.Engine.PubSub().Subscribe(key, id)
+			subscribedKeys[key] = struct{}{}
 
-			sub := executor.Engine.PubSub().Subscribe(key, conn.RemoteAddr().String())
-			conn.Write([]byte("SUBSCRIBED to " + key + "\n"))
+			subResp := fmt.Sprintf("*3\r\n$9\r\nsubscribe\r\n$%d\r\n%s\r\n:%d\r\n", len(key), key, 1)
+			writeChan <- []byte(subResp)
 
-			// Listen to channel and write updates to TCP client
-			go func() {
+			// Push messages from pubsub through writeChan (NOT conn directly)
+			go func(key string, sub *engine.Subscriber) {
 				for msg := range sub.Chan {
-					conn.Write([]byte("[" + key + "] " + string(msg) + "\n"))
+					pubMsg := fmt.Sprintf("*3\r\n$7\r\nmessage\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+						len(key), key, len(msg), msg)
+					writeChan <- []byte(pubMsg)
 				}
-			}()
+			}(key, sub)
 
-			continue // wait for more input or pub messages
+			continue
 		}
 
-		// Handle UNSUBSCRIBE mode
-		if strings.HasPrefix(response, "__UNSUB__:") {
-			key := strings.TrimPrefix(response, "__UNSUB__:")
-
-			id := conn.RemoteAddr().String()
+		// Handle UNSUBSCRIBE
+		if len(response) > 16 && response[:16] == "__UNSUBSCRIBE__:" {
+			key := response[16:]
 			executor.Engine.PubSub().Unsubscribe(key, id)
 			delete(subscribedKeys, key)
-			conn.Write([]byte("UNSUBSCRIBED from " + key + "\n"))
+
+			unsubResp := fmt.Sprintf("*3\r\n$11\r\nunsubscribe\r\n$%d\r\n%s\r\n:%d\r\n",
+				len(key), key, 0)
+			writeChan <- []byte(unsubResp)
 			continue
 		}
 
-
-		conn.Write([]byte(response + "\n"))
-
+		// Default reply
+		writeChan <- []byte("+OK " + response + "\r\n")
 	}
 }
