@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -49,6 +50,65 @@ func ParseRESPCommand(r *bufio.Reader) ([]string, error) {
 
 	return args, nil
 }
+
+func ParseRESPCommandPartial(data []byte) (args []string, consumed int, err error) {
+	if len(data) == 0 || data[0] != '*' {
+		return nil, 0, nil 
+	}
+
+	lineEnd := bytes.Index(data, []byte("\r\n"))
+	if lineEnd == -1 {
+		return nil, 0, nil
+	}
+
+	numArgs, err := strconv.Atoi(string(data[1:lineEnd]))
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid array length: %s", string(data[1:lineEnd]))
+	}
+
+	pos := lineEnd + 2
+	args = make([]string, 0, numArgs)
+
+	for i := 0; i < numArgs; i++ {
+		if len(data) < pos || data[pos] != '$' {
+			return nil, 0, fmt.Errorf("expected bulk string")
+		}
+
+		lineEnd = bytes.Index(data[pos:], []byte("\r\n"))
+		if lineEnd == -1 {
+			return nil, 0, nil
+		}
+
+		argLen, err := strconv.Atoi(string(data[pos+1 : pos+lineEnd]))
+		if err != nil {
+			return nil, 0, fmt.Errorf("invalid bulk string length: %s", string(data[pos+1:pos+lineEnd]))
+		}
+
+		if len(data) < pos+lineEnd+2+argLen+2 {
+			return nil, 0, nil
+		}
+
+		pos += lineEnd + 2
+		args = append(args, string(data[pos:pos+argLen]))
+		pos += argLen + 2
+	}
+
+	return args, pos, nil
+}
+
+func EncodeString(s string) []byte {
+    return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
+}
+
+func EncodeSimpleString(s string) []byte {
+    return []byte(fmt.Sprintf("+%s\r\n", s))
+}
+
+func EncodeError(s string) []byte {
+    return []byte(fmt.Sprintf("-%s\r\n", s))
+}
+
+var EncodeEmpty = []byte("+OK\r\n")
 
 // Example:
 // *3\r\n
