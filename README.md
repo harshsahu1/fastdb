@@ -11,15 +11,62 @@
 A high-performance, in-memory sharded key-value store written in Go, with built-in Pub/Sub capabilities. Designed for concurrent access and minimal latency.
 
 ---
-## Benchmarks
 
-| Benchmark              | Ops/sec (approx) | Latency (ns/op) |
-| ---------------------- | ---------------- | --------------- |
-| `BenchmarkSet`         | ~2.86 million    | **389.3 ns**    |
-| `BenchmarkGet`         | ~5.83 million    | **236.8 ns**    |
-| `BenchmarkSetParallel` | ~8.53 million    | **147.9 ns**    |
-| `BenchmarkPubSubSet`   | ~5.90 million    | **208.3 ns**    |
+## 📦 Features
 
-## ⚠️Note: These benchmarks reflect in-process performance only. FastDB was not tested in server mode for this benchmark run, so results do not include TCP/network or inter-process communication overhead.
+- Ultra-fast `GET` and `SET` operations
+- Concurrent client handling
+- Lightweight architecture with minimal overhead
+- Redis-compatible benchmarking
+- Reactive
+
+---
+
+## ⚙️ Test Parameters
+
+Benchmarking was performed using `redis-benchmark`:
+
+- **Commands Tested:** `SET`, `GET`  
+- **Requests:** 10,000  
+- **Concurrency:** 50  
+- **Payload Size:** 3 bytes  
+- **Keep-alive:** Enabled  
+
+---
+
+## 📊 Performance Comparison
+
+### 🔄 Throughput (requests/sec)
+
+| Command | FastDB     | Redis      | Winner                    |
+| ------- | ---------- | ---------- | ------------------------- |
+| SET     | 111,111.11 | 108,695.65 | **FastDB** (≈2.2% faster) |
+| GET     | 169,491.53 | 188,679.25 | **Redis** (≈11.3% faster) |
+
+---
+
+### ⏱️ SET Command – Latency (ms)
+
+| Metric | FastDB | Redis | Winner                            |
+| ------ | ------ | ----- | --------------------------------- |
+| avg    | 0.305  | 0.301 | **Redis** (slightly better)       |
+| min    | 0.072  | 0.072 | Tie                               |
+| p50    | 0.191  | 0.191 | Tie                               |
+| p95    | 1.183  | 0.911 | **Redis**                         |
+| p99    | 1.295  | 1.391 | **FastDB**                        |
+| max    | 1.359  | 3.055 | **FastDB** (significantly better) |
+
+---
+
+### 🔍 GET Command – Latency (ms)
+
+| Metric | FastDB | Redis | Winner    |
+| ------ | ------ | ----- | --------- |
+| avg    | 0.158  | 0.148 | **Redis** |
+| min    | 0.064  | 0.056 | **Redis** |
+| p50    | 0.159  | 0.151 | **Redis** |
+| p95    | 0.199  | 0.183 | **Redis** |
+| p99    | 0.271  | 0.207 | **Redis** |
+| max    | 0.463  | 0.311 | **Redis** |
 ## ✨ WorkInProgress
 
