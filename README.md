@@ -40,7 +40,7 @@ Benchmarking was performed using `redis-benchmark`:
 
 | Command | FastDB     | Redis      | Winner                    |
 | ------- | ---------- | ---------- | ------------------------- |
-| SET     | 111,111.11 | 108,695.65 | **FastDB** (≈2.2% faster) |
+| SET     | 112,359.11 | 109,279.06 | **FastDB** (≈2.8% faster) |
 | GET     | 169,491.53 | 188,679.25 | **Redis** (≈11.3% faster) |
 
 ---
