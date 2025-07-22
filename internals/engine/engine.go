@@ -1,6 +1,9 @@
 package engine
 
-import "hash/crc32"
+import (
+	"bytes"
+	"hash/crc32"
+)
 
 type Engine struct {
 	shards     	[]*Shard
@@ -8,7 +11,6 @@ type Engine struct {
 	ps 			*PubSubManager
 }
 
-// New creates a new sharded engine with the given number of shards.
 func New(numShards uint32) *Engine {
 	shards := make([]*Shard, numShards)
 	for i := uint32(0); i < numShards; i++ {
@@ -21,38 +23,37 @@ func New(numShards uint32) *Engine {
 	}
 }
 
-// Set sets a key to a value.
 func (e *Engine) Set(key string, value []byte) {
 	shard := e.getShard(key)
 	shard.set(key, value)
 
-	e.ps.Publish(key, []byte("SET " + key + " " + string(value)))
+	if e.ps.HasSubscribers(key) {
+		msg := bytes.Join([][]byte{[]byte("SET"), []byte(key), value}, []byte(" "))
+		e.ps.Publish(key, msg)
+	}
 }
 
-// Get retrieves a key's value.
 func (e *Engine) Get(key string) ([]byte, bool) {
 	shard := e.getShard(key)
-	shard.mu.RLock()
-	defer shard.mu.RUnlock()
 	val, ok := shard.get(key)
 	return val, ok
 }
 
-// Delete removes a key.
 func (e *Engine) Delete(key string) {
 	shard := e.getShard(key)
-	delete(shard.data, key)
+	shard.delete(key)
 
-	e.ps.Publish(key, []byte("DEL " + key))
+	if e.ps.HasSubscribers(key) {
+		msg := bytes.Join([][]byte{[]byte("DEL"), []byte(key)}, []byte(" "))
+		e.ps.Publish(key, msg)
+	}
 }
 
-// getShard returns the shard for a given key.
 func (e *Engine) getShard(key string) *Shard {
 	hash := crc32.ChecksumIEEE([]byte(key))
 	return e.shards[hash%uint32(e.numShards)]
 }
 
-// Access to PubSub system
 func (e *Engine) PubSub() *PubSubManager {
 	return e.ps
 }

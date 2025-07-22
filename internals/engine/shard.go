@@ -1,3 +1,5 @@
+// internals/engine/shard.go
+
 package engine
 
 import (
@@ -5,31 +7,25 @@ import (
 )
 
 type Shard struct {
-	mu sync.RWMutex
-	data map[string][]byte
+	data sync.Map
 }
 
 func newShard() *Shard {
-	return &Shard{
-		data: make(map[string][]byte),
-	}
+	return &Shard{}
 }
 
 func (s *Shard) set(key string, value []byte) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[key] = value
+	s.data.Store(key, value)
 }
 
-func (s * Shard) get(key string) ([]byte, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	val, ok := s.data[key]
-	return val, ok
+func (s *Shard) get(key string) ([]byte, bool) {
+	val, ok := s.data.Load(key)
+	if !ok {
+		return nil, false
+	}
+	return val.([]byte), true
 }
 
 func (s *Shard) delete(key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.data, key)
+	s.data.Delete(key)
 }

@@ -53,7 +53,6 @@ func handleConnection(conn net.Conn, executor *command.Executor) {
 			continue
 		}
 
-		// Handle SUBSCRIBE
 		if len(response) > 14 && response[:14] == "__SUBSCRIBE__:" {
 			key := response[14:]
 			sub := executor.Engine.PubSub().Subscribe(key, id)
@@ -62,7 +61,6 @@ func handleConnection(conn net.Conn, executor *command.Executor) {
 			subResp := fmt.Sprintf("*3\r\n$9\r\nsubscribe\r\n$%d\r\n%s\r\n:%d\r\n", len(key), key, 1)
 			writeChan <- []byte(subResp)
 
-			// Push messages from pubsub through writeChan (NOT conn directly)
 			go func(key string, sub *engine.Subscriber) {
 				for msg := range sub.Chan {
 					pubMsg := fmt.Sprintf("*3\r\n$7\r\nmessage\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
@@ -74,7 +72,6 @@ func handleConnection(conn net.Conn, executor *command.Executor) {
 			continue
 		}
 
-		// Handle UNSUBSCRIBE
 		if len(response) > 16 && response[:16] == "__UNSUBSCRIBE__:" {
 			key := response[16:]
 			executor.Engine.PubSub().Unsubscribe(key, id)

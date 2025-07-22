@@ -47,6 +47,12 @@ func (ps *PubSubManager) Unsubscribe(key string, id string) {
 	}
 }
 
+func (ps *PubSubManager) HasSubscribers(key string) bool {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return len(ps.subscribers[key]) > 0
+}
+
 func (ps *PubSubManager) Publish(key string, message []byte) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
